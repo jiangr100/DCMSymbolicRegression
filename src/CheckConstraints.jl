@@ -6,7 +6,8 @@ using DynamicExpressions:
     get_tree,
     count_depth,
     tree_mapreduce,
-    get_child
+    get_child,
+    get_variable_names
 using ..CoreModule: AbstractOptions
 using ..ComplexityModule: compute_complexity, past_complexity_limit
 
@@ -62,6 +63,56 @@ function flag_illegal_nests(tree::AbstractExpressionNode, options::AbstractOptio
     end
 end
 
+function count_features(
+    tree::AbstractExpressionNode,
+    feature::String,
+    variable_names::AbstractVector{<:AbstractString}
+)::Int
+    return tree_mapreduce(
+        let vn = variable_names
+            t -> (!t.constant && vn[t.feature] == feature) ? 1 : 0
+        end,
+        t -> 0,
+        +,
+        tree,
+        break_sharing=Val(true),
+    )
+end
+
+function flag_illegal_feature_constraints(
+    tree::AbstractExpressionNode,
+    options::AbstractOptions,
+    variable_names::AbstractVector{<:AbstractString}
+)::Bool
+    unary_feature_constraints = options.unary_feature_constraints
+    binary_feature_constraints = options.binary_feature_constraints
+    isnothing(unary_feature_constraints) && return false
+    isnothing(binary_feature_constraints) && return false
+    any(tree) do subtree
+        # Check unary constraints
+        unary_violated = any(unary_feature_constraints) do (op_idx, op_constraints)
+            subtree.degree == 1 &&
+            subtree.op == op_idx &&
+            any(op_constraints) do (feature, max_count)
+                count_features(subtree, feature, variable_names) > max_count
+            end
+        end
+        
+        # Check binary constraints  
+        binary_violated = any(binary_feature_constraints) do (op_idx, op_constraints)
+            subtree.degree == 2 &&
+            subtree.op == op_idx &&
+            any(op_constraints) do (feature, (max_count_left, max_count_right))
+                count_features(subtree.l, feature, variable_names) > max_count_left ||
+                count_features(subtree.r, feature, variable_names) > max_count_right
+            end
+        end
+        
+        # Return true if ANY constraints are violated
+        return unary_violated || binary_violated
+    end
+end
+
 """Check if user-passed constraints are satisfied. Returns false otherwise."""
 function check_constraints(
     ex::AbstractExpression,
@@ -70,6 +121,9 @@ function check_constraints(
     cached_size::Union{Int,Nothing}=nothing,
 )::Bool
     tree = get_tree(ex)
+    if get_variable_names(ex) !== nothing
+        flag_illegal_feature_constraints(tree, options, get_variable_names(ex)) && return false
+    end
     return check_constraints(tree, options, maxsize, cached_size)
 end
 function check_constraints(

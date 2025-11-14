@@ -105,22 +105,25 @@ The `Kp` parameter is used to specify the symbols representing the parameters, i
 """
 struct TemplateStructure{K,Kp,E<:Function,NF<:NamedTuple{K},NP<:NamedTuple{Kp}} <: Function
     combine::E
+    variable_names_list::Vector{Vector{String}}
     num_features::NF
     num_parameters::NP
 end
 
 function TemplateStructure{K}(
     combine::E,
+    variable_names_list::Vector{Vector{String}},
     _deprecated_num_features=nothing;
     num_features=nothing,
     num_parameters=nothing,
 ) where {K,E<:Function}
     return TemplateStructure{K,()}(
-        combine, _deprecated_num_features; num_features, num_parameters
+        combine, variable_names_list, _deprecated_num_features; num_features, num_parameters
     )
 end
 function TemplateStructure{K,Kp}(
     combine::E,
+    variable_names_list::Vector{Vector{String}},
     _deprecated_num_features=nothing;
     num_features::Union{NamedTuple{K},Nothing}=nothing,
     num_parameters::Union{NamedTuple{Kp},Nothing}=nothing,
@@ -144,7 +147,7 @@ function TemplateStructure{K,Kp}(
         infer_variable_constraints(Val(K), num_parameters, combine)
     )
     return TemplateStructure{K,Kp,E,typeof(num_features),typeof(num_parameters)}(
-        combine, num_features, num_parameters
+        combine, variable_names_list, num_features, num_parameters
     )
 end
 
@@ -506,13 +509,19 @@ function EB.create_expression(
     (::Val{embed})=Val(false),
 ) where {T,L,embed,E<:TemplateExpression}
     function_keys = get_function_keys(options.expression_options.structure)
+    variable_names_list = options.expression_options.structure.variable_names_list
 
     # NOTE: We need to copy over the operators so we can call the structure function
     operators = options.operators
     variable_names = embed ? dataset.variable_names : nothing
     eval_options = EvalOptions(; turbo=options.turbo, bumper=options.bumper)
     inner_expressions = ntuple(
-        _ -> ComposableExpression(copy(t); operators, variable_names, eval_options),
+        i -> ComposableExpression(
+            copy(t); 
+            operators=operators, 
+            variable_names=variable_names_list[i], 
+            eval_options=eval_options
+        ),
         Val(length(function_keys)),
     )
     # TODO: Generalize to other inner expression types
