@@ -20,6 +20,8 @@ using ..CoreModule: AbstractOptions, DATA_TYPE, init_value, sample_value
 
 import ..CoreModule: mutate_value
 
+using ..MultiFeatureNodeModule
+
 """
     get_contents_for_mutation(ex::AbstractExpression, rng::AbstractRNG)
 
@@ -142,6 +144,26 @@ function mutate_constant(
     node.val = mutate_value(rng, node.val, temperature, options)
     return tree
 end
+function mutate_constant(
+    tree::MultiFeatureNode{T},
+    temperature,
+    options::AbstractOptions,
+    rng::AbstractRNG=default_rng(),
+) where {T<:DATA_TYPE}
+    # T is between 0 and 1.
+
+    if !(has_constants(tree))
+        return tree
+    end
+    node = rand(rng, NodeSampler(; tree, filter=t -> (t.degree == 0 && !t.is_single_feature)))
+    if node.constant
+        node.val = mutate_value(rng, node.val, temperature, options)
+    else
+        rand_coeff = rand(rng, 1:length(node.features))
+        node.coefficients[rand_coeff] = mutate_value(rng, node.coefficients[rand_coeff], temperature, options)
+    end
+    return tree
+end
 
 function mutate_value(rng::AbstractRNG, val::Number, temperature, options)
     return val * mutate_factor(typeof(val), temperature, options, rng)
@@ -163,7 +185,9 @@ end
 
 """Randomly change which feature a variable node points to"""
 function mutate_feature(
-    ex::AbstractExpression{T}, nfeatures::Int, rng::AbstractRNG=default_rng()
+    ex::AbstractExpression{T}, 
+    nfeatures::Int, 
+    rng::AbstractRNG=default_rng()
 ) where {T<:DATA_TYPE}
     tree, context = get_contents_for_mutation(ex, rng)
     local_nfeatures = get_nfeatures_for_mutation(ex, context, nfeatures)
@@ -179,6 +203,18 @@ function mutate_feature(
 
     node = rand(rng, NodeSampler(; tree, filter=t -> (t.degree == 0 && !t.constant)))
     node.feature = rand(rng, filter(!=(node.feature), 1:nfeatures))
+    return tree
+end
+function mutate_feature(
+    tree::MultiFeatureNode{T}, nfeatures::Int, rng::AbstractRNG=default_rng()
+) where {T<:DATA_TYPE}
+    # Quick checks for if there is nothing to do
+    nfeatures <= 1 && return tree
+    !any(node -> node.degree == 0 && !node.constant, tree) && return tree
+
+    node = rand(rng, NodeSampler(; tree, filter=t -> (t.degree == 0 && !t.constant)))
+    new_node = make_random_feature(nfeatures, T, typeof(tree), rng)
+    set_node!(node, new_node)
     return tree
 end
 
@@ -328,7 +364,38 @@ function make_random_leaf(
     if rand(rng, Bool)
         return constructorof(N)(T; val=sample_value(rng, T, options))
     else
-        return constructorof(N)(T; feature=rand(rng, 1:nfeatures))
+        return make_random_feature(nfeatures, T, N, rng, options)
+        # return constructorof(N)(T; feature=rand(rng, 1:nfeatures))
+        # if rand(rng, Bool)
+        #     return constructorof(N)(T; feature=rand(rng, 1:nfeatures))
+        # else
+        #     return constructorof(N)(T; features=UInt16[1, 2, 3], coefficients=randn(default_rng(), Float64, 4))
+        # end
+    end
+end
+
+function make_random_feature(
+    nfeatures::Int,
+    ::Type{T},
+    ::Type{N},
+    rng::AbstractRNG=default_rng(),
+    options::Union{AbstractOptions,Nothing}=nothing,
+) where {T<:DATA_TYPE,N<:AbstractExpressionNode}
+    rand_val = rand(rng, 1:nfeatures)
+    if rand_val <= 4   # purpose 
+        return constructorof(N)(T; features=UInt16[1, 2, 3, 4], coefficients=randn(rng, T, 5))
+    elseif rand_val <= 5
+        return constructorof(N)(T; features=UInt16[5], coefficients=randn(rng, T, 2))
+    elseif rand_val <= 7
+        return constructorof(N)(T; features=UInt16[6, 7], coefficients=randn(rng, T, 3))
+    elseif rand_val <= 12
+        return constructorof(N)(T; features=UInt16[8, 9, 10, 11, 12], coefficients=randn(rng, T, 6))
+    elseif rand_val <= 13
+        return constructorof(N)(T; features=UInt16[13], coefficients=randn(rng, T, 2))
+    elseif rand_val <= 16
+        return constructorof(N)(T; features=UInt16[14, 15, 16], coefficients=randn(rng, T, 4))
+    else
+        return constructorof(N)(T; feature=rand_val)
     end
 end
 

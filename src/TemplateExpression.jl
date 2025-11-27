@@ -55,6 +55,8 @@ using ..MutateModule: MutateModule as MM
 using ..PopMemberModule: PopMember
 using ..ComposableExpressionModule: ComposableExpression, ValidVector
 
+using ..MultiFeatureNodeModule
+
 struct ParamVector{T} <: AbstractVector{T}
     _data::Vector{T}
 end
@@ -106,25 +108,28 @@ The `Kp` parameter is used to specify the symbols representing the parameters, i
 struct TemplateStructure{K,Kp,E<:Function,NF<:NamedTuple{K},NP<:NamedTuple{Kp}} <: Function
     combine::E
     variable_names_list::Vector{Vector{String}}
+    feature_composition::Dict{String, Vector{String}}
     num_features::NF
     num_parameters::NP
 end
 
 function TemplateStructure{K}(
     combine::E,
-    variable_names_list::Vector{Vector{String}},
     _deprecated_num_features=nothing;
+    variable_names_list::Vector{Vector{String}}=nothing,
+    feature_composition::Dict{String, Vector{String}}=nothing,
     num_features=nothing,
     num_parameters=nothing,
 ) where {K,E<:Function}
     return TemplateStructure{K,()}(
-        combine, variable_names_list, _deprecated_num_features; num_features, num_parameters
+        combine, _deprecated_num_features; variable_names_list, feature_composition, num_features, num_parameters
     )
 end
 function TemplateStructure{K,Kp}(
     combine::E,
-    variable_names_list::Vector{Vector{String}},
     _deprecated_num_features=nothing;
+    variable_names_list::Vector{Vector{String}}=nothing,
+    feature_composition::Dict{String, Vector{String}}=nothing,
     num_features::Union{NamedTuple{K},Nothing}=nothing,
     num_parameters::Union{NamedTuple{Kp},Nothing}=nothing,
 ) where {K,Kp,E<:Function}
@@ -141,13 +146,18 @@ function TemplateStructure{K,Kp}(
         )
     end
     num_parameters = @something(num_parameters, NamedTuple(),)
-    num_features = @something(
-        num_features,
-        _deprecated_num_features,
-        infer_variable_constraints(Val(K), num_parameters, combine)
-    )
+    if variable_names_list !== nothing
+        num_features = NamedTuple{K}(length(v) for v in variable_names_list)
+    else
+        num_features = @something(
+            num_features,
+            _deprecated_num_features,
+            infer_variable_constraints(Val(K), num_parameters, combine)
+        )
+    end
+    
     return TemplateStructure{K,Kp,E,typeof(num_features),typeof(num_parameters)}(
-        combine, variable_names_list, num_features, num_parameters
+        combine, variable_names_list, feature_composition, num_features, num_parameters
     )
 end
 
@@ -613,6 +623,7 @@ function DE.string_tree(
     num_features = get_metadata(ex).structure.num_features
     total_num_features = max(values(num_features)...)
     variable_names = ['#' * string(i) for i in 1:total_num_features]
+    # variable_names_list = ex.metadata.structure.variable_names_list
     parameters = has_params(ex) ? get_metadata(ex).parameters : NamedTuple()
     all_keys = (keys(num_features)..., keys(parameters)...)
     colors = _colors(Val(length(all_keys)))
@@ -624,6 +635,13 @@ function DE.string_tree(
             ),
             values(expressions),
             colors[1:length(expressions)],
+            # TODO: Figure it out!
+            # FixKws(
+            #     _format_component; operators, pretty, f_constant, kws...
+            # ),
+            # values(expressions),
+            # colors[1:length(expressions)],
+            # variable_names=variable_names_list[1:length(expressions)]
         )...,
         map(
             FixKws(_format_component; pretty, f_constant),
@@ -984,7 +1002,8 @@ end
 # COV_EXCL_START
 ES.get_expression_type(::TemplateExpressionSpec) = TemplateExpression
 ES.get_expression_options(spec::TemplateExpressionSpec) = (; structure=spec.structure)
-ES.get_node_type(::TemplateExpressionSpec) = Node
+# ES.get_node_type(::TemplateExpressionSpec) = Node
+ES.get_node_type(::TemplateExpressionSpec) = MultiFeatureNode
 # COV_EXCL_STOP
 
 IDE.require_copy_to_workers(::Type{<:TemplateExpression}) = true  # COV_EXCL_LINE

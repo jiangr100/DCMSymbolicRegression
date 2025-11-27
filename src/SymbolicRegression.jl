@@ -204,6 +204,7 @@ end
 using DispatchDoctor: @stable
 
 @stable default_mode = "disable" begin
+    include("MultiFeatureNode.jl")
     include("Utils.jl")
     include("InterfaceDynamicQuantities.jl")
     include("Core.jl")
@@ -290,6 +291,7 @@ using .CoreModule:
     create_expression,
     has_units
 using .UtilsModule: is_anonymous_function, recursive_merge, json3_write, @ignore
+using .MultiFeatureNodeModule
 using .ComplexityModule: compute_complexity
 using .CheckConstraintsModule: check_constraints
 using .AdaptiveParsimonyModule:

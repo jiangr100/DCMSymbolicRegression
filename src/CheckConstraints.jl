@@ -11,6 +11,8 @@ using DynamicExpressions:
 using ..CoreModule: AbstractOptions
 using ..ComplexityModule: compute_complexity, past_complexity_limit
 
+using ..MultiFeatureNodeModule
+
 # Generic operator complexity checking for any degree
 function flag_operator_complexity(
     tree::AbstractExpressionNode, degree::Int, op::Int, cons, options::AbstractOptions
@@ -32,18 +34,23 @@ function _check_operator_constraints(
     end
 end
 
+# function count_max_nestedness(tree, degree, op)
+#     # TODO: Update this to correctly share nodes
+#     nestedness = tree_mapreduce(
+#         t -> 0,  # Leafs
+#         t -> (t.degree == degree && t.op == op) ? 1 : 0,  # Branches
+#         (p, c...) -> p + max(c...),  # Reduce
+#         tree;
+#         break_sharing=Val(true),
+#     )
+#     # Remove count of self:
+#     is_self = tree.degree == degree && tree.op == op
+#     return nestedness - (is_self ? 1 : 0)
+# end
 function count_max_nestedness(tree, degree, op)
-    # TODO: Update this to correctly share nodes
-    nestedness = tree_mapreduce(
-        t -> 0,  # Leafs
-        t -> (t.degree == degree && t.op == op) ? 1 : 0,  # Branches
-        (p, c...) -> p + max(c...),  # Reduce
-        tree;
-        break_sharing=Val(true),
-    )
-    # Remove count of self:
-    is_self = tree.degree == degree && tree.op == op
-    return nestedness - (is_self ? 1 : 0)
+    tree.degree == 0 && return 0
+    tree.degree == 1 && return tree.l.degree == degree && tree.l.op == op
+    return Int(tree.l.degree == degree && tree.l.op == op) + Int(tree.r.degree == degree && tree.r.op == op)
 end
 
 """Check if there are any illegal combinations of operators"""
@@ -70,13 +77,49 @@ function count_features(
 )::Int
     return tree_mapreduce(
         let vn = variable_names
-            t -> (!t.constant && vn[t.feature] == feature) ? 1 : 0
+            t -> (!t.constant && occursin(feature, vn[t.feature])) ? 1 : 0
         end,
         t -> 0,
         +,
         tree,
         break_sharing=Val(true),
     )
+end
+function count_features(
+    tree::MultiFeatureNode,
+    feature::String,
+    variable_names::AbstractVector{<:AbstractString}
+)::Int
+    return tree_mapreduce(
+        let vn = variable_names
+            # t -> (!t.constant && t.is_single_feature && vn[t.feature] == feature) ? 1 : 0
+            t -> (t.constant ? 0 : (
+                    t.is_single_feature ? vn[t.feature] == feature : (
+                        any(t.features) do f
+                            contains(vn[f], feature)
+                        end
+                    )
+                )
+            )
+        end,
+        t -> 0,
+        +,
+        tree,
+        break_sharing=Val(true),
+    )
+end
+
+function count_constants(
+    tree::AbstractExpressionNode
+)::Int
+    # return tree_mapreduce(
+    #     t -> t.constant ? 1 : 0,
+    #     t -> 0,
+    #     +,
+    #     tree,
+    #     break_sharing=Val(true),
+    # )
+    return tree.constant ? 1 : 0
 end
 
 function flag_illegal_feature_constraints(
@@ -86,11 +129,11 @@ function flag_illegal_feature_constraints(
 )::Bool
     unary_feature_constraints = options.unary_feature_constraints
     binary_feature_constraints = options.binary_feature_constraints
-    isnothing(unary_feature_constraints) && return false
-    isnothing(binary_feature_constraints) && return false
+    # isnothing(unary_feature_constraints) && return false
+    # isnothing(binary_feature_constraints) && return false
     any(tree) do subtree
         # Check unary constraints
-        unary_violated = any(unary_feature_constraints) do (op_idx, op_constraints)
+        unary_violated = isnothing(unary_feature_constraints) ? false : any(unary_feature_constraints) do (op_idx, op_constraints)
             subtree.degree == 1 &&
             subtree.op == op_idx &&
             any(op_constraints) do (feature, max_count)
@@ -99,13 +142,42 @@ function flag_illegal_feature_constraints(
         end
         
         # Check binary constraints  
-        binary_violated = any(binary_feature_constraints) do (op_idx, op_constraints)
+        binary_violated = isnothing(binary_feature_constraints) ? false : any(binary_feature_constraints) do (op_idx, op_constraints)
             subtree.degree == 2 &&
             subtree.op == op_idx &&
             any(op_constraints) do (feature, (max_count_left, max_count_right))
                 count_features(subtree.l, feature, variable_names) > max_count_left ||
                 count_features(subtree.r, feature, variable_names) > max_count_right
             end
+        end
+        
+        # Return true if ANY constraints are violated
+        return unary_violated || binary_violated
+    end
+end
+
+function flag_illegal_constant_constraints(
+    tree::AbstractExpressionNode,
+    options::AbstractOptions
+)::Bool
+    unary_constant_constraints = options.unary_constant_constraints
+    binary_constant_constraints = options.binary_constant_constraints
+    # isnothing(unary_feature_constraints) && return false
+    # isnothing(binary_feature_constraints) && return false
+    any(tree) do subtree
+        # Check unary constraints
+        unary_violated = isnothing(unary_constant_constraints) ? false : any(unary_constant_constraints) do (op_idx, max_count)
+            subtree.degree == 1 &&
+            subtree.op == op_idx &&
+            count_constants(subtree.l) > max_count
+        end
+        
+        # Check binary constraints  
+        binary_violated = isnothing(binary_constant_constraints) ? false : any(binary_constant_constraints) do (op_idx, (max_count_left, max_count_right))
+            subtree.degree == 2 &&
+            subtree.op == op_idx &&
+            (count_constants(subtree.l) > max_count_left ||
+             count_constants(subtree.r) > max_count_right)
         end
         
         # Return true if ANY constraints are violated
@@ -142,6 +214,7 @@ function check_constraints(
     end
     any_invalid && return false
     flag_illegal_nests(tree, options) && return false
+    flag_illegal_constant_constraints(tree, options) && return false
     return true
 end
 

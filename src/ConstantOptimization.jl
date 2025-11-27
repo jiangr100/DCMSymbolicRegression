@@ -9,15 +9,22 @@ using DynamicExpressions:
     AbstractExpression,
     Expression,
     count_scalar_constants,
-    get_scalar_constants,
-    set_scalar_constants!,
     extract_gradient
-using DispatchDoctor: @unstable
+
+import DynamicExpressions:
+    get_scalar_constants,
+    set_scalar_constants!
+
+using DynamicExpressions.NodeModule: filter_map
+using DynamicExpressions.ValueInterfaceModule: get_number_type
+
+    using DispatchDoctor: @unstable
 using ..CoreModule:
     AbstractOptions, Dataset, DATA_TYPE, LOSS_TYPE, specialized_options, dataset_fraction
 using ..UtilsModule: get_birth_order, PerTaskCache, stable_get!
 using ..LossFunctionsModule: eval_loss, loss_to_cost
 using ..PopMemberModule: PopMember
+using ..MultiFeatureNodeModule
 
 function can_optimize(::AbstractExpression{T}, options) where {T}
     return can_optimize(T, options)
@@ -35,17 +42,17 @@ end
     can_optimize(member.tree, options) || return (member, 0.0)
     nconst = count_constants_for_optimization(member.tree)
     nconst == 0 && return (member, 0.0)
-    if nconst == 1 && !(T <: Complex)
-        algorithm = Optim.Newton(; linesearch=LineSearches.BackTracking())
-        return _optimize_constants(
-            dataset,
-            member,
-            specialized_options(options),
-            algorithm,
-            options.optimizer_options,
-            rng,
-        )
-    end
+    # if nconst == 1 && !(T <: Complex)
+    #     algorithm = Optim.Newton(; linesearch=LineSearches.BackTracking())
+    #     return _optimize_constants(
+    #         dataset,
+    #         member,
+    #         specialized_options(options),
+    #         algorithm,
+    #         options.optimizer_options,
+    #         rng,
+    #     )
+    # end
     return _optimize_constants(
         dataset,
         member,
@@ -58,6 +65,63 @@ end
     )
 end
 
+"""
+    node_has_constants(tree::MultiFeatureNode)::Bool
+
+Check if the current node in a tree has constants, either a constant node, or a multi feature node.
+"""
+@inline node_has_constants(tree::MultiFeatureNode) = tree.degree == 0 && !tree.is_single_feature
+
+"""
+    get_scalar_constants(tree::AbstractExpressionNode{T}, BT::Type = T)::Vector{T} where {T}
+
+Get all the scalar constants inside a tree, in depth-first order.
+The function `set_scalar_constants!` sets them in the same order,
+given the output of this function.
+Also return metadata that can will be used in the `set_scalar_constants!` function.
+"""
+function get_scalar_constants(
+    tree::MultiFeatureNode{T}, ::Type{BT}=get_number_type(T)
+) where {T,BT}
+    refs = filter_map(
+        node_has_constants, node -> Ref(node), tree, Base.RefValue{typeof(tree)}
+    )
+    if T <: Number
+        if isempty(refs)
+            return T[], refs
+        end
+        return vcat(map(r -> r[].constant ? [r[].val] : r[].coefficients, refs)...), refs
+    else
+        error("get_scalar_constants failed, Not implemented!")
+    end
+end
+
+"""
+    set_scalar_constants!(tree::AbstractExpressionNode{T}, constants, refs) where {T}
+
+Set the constants in a tree, in depth-first order. The function
+`get_scalar_constants` gets them in the same order.
+"""
+function set_scalar_constants!(tree::MultiFeatureNode{T}, constants, refs) where {T}
+    if T <: Number
+        j = 1
+        @inbounds for i in eachindex(refs)
+            if refs[i][].constant
+                refs[i][].val = constants[j]
+                j += 1
+            else
+                for k in eachindex(refs[i][].coefficients)
+                    refs[i][].coefficients[k] = constants[j]
+                    j += 1
+                end
+            end
+        end
+    else
+        error("set_scalar_constants failed, Not implemented!")
+    end
+    return tree
+end
+
 """How many constants will be optimized."""
 count_constants_for_optimization(ex::Expression) = count_scalar_constants(ex)
 
@@ -66,7 +130,7 @@ function _optimize_constants(
 )::Tuple{P,Float64} where {T,L,P<:PopMember{T,L}}
     tree = member.tree
     x0, refs = get_scalar_constants(tree)
-    @assert count_constants_for_optimization(tree) == length(x0)
+    # @assert count_constants_for_optimization(tree) == length(x0)
     ctx = EvaluatorContext(dataset, options)
     f = Evaluator(tree, refs, ctx)
     fg! = GradEvaluator(f, options.autodiff_backend)

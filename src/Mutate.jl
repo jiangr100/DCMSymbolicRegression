@@ -199,6 +199,7 @@ end
     successful_mutation = false
     attempts = 0
     max_attempts = 10
+    
     node_storage = allocate_container(member.tree)
 
     #############################################
@@ -240,6 +241,7 @@ end
             )
             rtree[] = mutation_result.tree::N
             successful_mutation = check_constraints(rtree[], options, curmaxsize)
+            # println("mutation type: ", mutation_choice, " success? ", successful_mutation)
             attempts += 1
         end
     end
