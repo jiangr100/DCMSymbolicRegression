@@ -26,6 +26,8 @@ using ..ExpressionBuilderModule: strip_metadata
 using ..InterfaceDynamicExpressionsModule: takes_eval_options
 using ..CheckConstraintsModule: check_constraints
 
+using ..LossFunctionsModule: eval_cost
+
 function logging_callback! end
 
 """
@@ -408,6 +410,42 @@ function check_max_evals(num_evals, options::AbstractOptions)::Bool
     return options.max_evals !== nothing && options.max_evals::Int <= sum(sum, num_evals)
 end
 
+function check_valid_loss_early_stop(state, options)
+    if !hasproperty(options, :validation_dataset) || options.validation_dataset == nothing
+        return false
+    end
+    
+    valid_loss = 0
+    for pops in state.best_sub_pops
+        total_pop_loss = 0
+        for pop in pops
+            pop_loss = 0
+            for i in 1:(pop.n)
+                _, loss = eval_cost(options.validation_dataset, pop.members[i], options)
+                pop_loss += loss
+            end
+            total_pop_loss += pop_loss / pop.n
+        end
+        valid_loss += total_pop_loss / length(pops)
+    end
+    # calculate the average validation loss across best members in all datasets/populations
+    valid_loss /= length(state.best_sub_pops)
+    if isnan(valid_loss)
+        return false
+    end
+    
+    if valid_loss < state.min_valid_loss
+        state.min_valid_loss = valid_loss
+        state.valid_loss_plateau = 0
+    else
+        state.valid_loss_plateau += 1
+        if state.valid_loss_plateau > options.valid_loss_plateau_tolerance
+            return true
+        end
+    end
+    return false
+end
+
 """
 This struct is used to monitor resources.
 
@@ -581,7 +619,7 @@ The state of the search, including the populations, worker outputs, tasks, and
 channels. This is used to manage the search and keep track of runtime variables
 in a single struct.
 """
-Base.@kwdef struct SearchState{T,L,N<:AbstractExpression{T},WorkerOutputType,ChannelType} <:
+Base.@kwdef mutable struct SearchState{T,L,N<:AbstractExpression{T},WorkerOutputType,ChannelType} <:
                    AbstractSearchState{T,L,N}
     procs::Vector{Int}
     we_created_procs::Bool
@@ -593,6 +631,8 @@ Base.@kwdef struct SearchState{T,L,N<:AbstractExpression{T},WorkerOutputType,Cha
     halls_of_fame::Vector{HallOfFame{T,L,N}}
     last_pops::Vector{Vector{Population{T,L,N}}}
     best_sub_pops::Vector{Vector{Population{T,L,N}}}
+    min_valid_loss::Float64
+    valid_loss_plateau::Int
     all_running_search_statistics::Vector{RunningSearchStatistics}
     num_evals::Vector{Vector{Float64}}
     cycles_remaining::Vector{Int}

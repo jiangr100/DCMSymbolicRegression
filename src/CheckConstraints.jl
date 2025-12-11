@@ -96,7 +96,7 @@ function count_features(
             t -> (t.constant ? 0 : (
                     t.is_single_feature ? vn[t.feature] == feature : (
                         any(t.features) do f
-                            contains(vn[f], feature)
+                            startswith(vn[f], feature)
                         end
                     )
                 )
@@ -127,8 +127,8 @@ function flag_illegal_feature_constraints(
     options::AbstractOptions,
     variable_names::AbstractVector{<:AbstractString}
 )::Bool
-    unary_feature_constraints = options.unary_feature_constraints
-    binary_feature_constraints = options.binary_feature_constraints
+    unary_feature_constraints = hasproperty(options, :unary_feature_constraints) ? options.unary_feature_constraints : nothing
+    binary_feature_constraints = hasproperty(options, :binary_feature_constraints) ? options.binary_feature_constraints : nothing
     # isnothing(unary_feature_constraints) && return false
     # isnothing(binary_feature_constraints) && return false
     any(tree) do subtree
@@ -160,8 +160,8 @@ function flag_illegal_constant_constraints(
     tree::AbstractExpressionNode,
     options::AbstractOptions
 )::Bool
-    unary_constant_constraints = options.unary_constant_constraints
-    binary_constant_constraints = options.binary_constant_constraints
+    unary_constant_constraints = hasproperty(options, :unary_constant_constraints) ? options.unary_constant_constraints : nothing
+    binary_constant_constraints = hasproperty(options, :binary_constant_constraints) ? options.binary_constant_constraints : nothing
     # isnothing(unary_feature_constraints) && return false
     # isnothing(binary_feature_constraints) && return false
     any(tree) do subtree

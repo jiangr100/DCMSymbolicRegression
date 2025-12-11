@@ -205,18 +205,6 @@ function mutate_feature(
     node.feature = rand(rng, filter(!=(node.feature), 1:nfeatures))
     return tree
 end
-function mutate_feature(
-    tree::MultiFeatureNode{T}, nfeatures::Int, rng::AbstractRNG=default_rng()
-) where {T<:DATA_TYPE}
-    # Quick checks for if there is nothing to do
-    nfeatures <= 1 && return tree
-    !any(node -> node.degree == 0 && !node.constant, tree) && return tree
-
-    node = rand(rng, NodeSampler(; tree, filter=t -> (t.degree == 0 && !t.constant)))
-    new_node = make_random_feature(nfeatures, T, typeof(tree), rng)
-    set_node!(node, new_node)
-    return tree
-end
 
 """Add a random unary/binary operation to the end of a tree"""
 function append_random_op(
@@ -381,6 +369,16 @@ function make_random_feature(
     rng::AbstractRNG=default_rng(),
     options::Union{AbstractOptions,Nothing}=nothing,
 ) where {T<:DATA_TYPE,N<:AbstractExpressionNode}
+    rand_val = rand(rng, 1:nfeatures)
+    return constructorof(N)(T; feature=rand_val) 
+end
+function make_random_feature(
+    nfeatures::Int,
+    ::Type{T},
+    ::Type{N},
+    rng::AbstractRNG=default_rng(),
+    options::Union{AbstractOptions,Nothing}=nothing,
+) where {T<:DATA_TYPE,N<:MultiFeatureNode}
     rand_val = rand(rng, 1:nfeatures)
     if rand_val <= 4   # purpose 
         return constructorof(N)(T; features=UInt16[1, 2, 3, 4], coefficients=randn(rng, T, 5))

@@ -527,7 +527,12 @@ function EB.create_expression(
     eval_options = EvalOptions(; turbo=options.turbo, bumper=options.bumper)
     inner_expressions = ntuple(
         i -> ComposableExpression(
-            copy(t); 
+            MF.gen_random_tree(
+                hasproperty(options, :init_equation_size) ? options.init_equation_size : 3,
+                options, 
+                length(variable_names_list[i]), 
+                T
+            ); 
             operators=operators, 
             variable_names=variable_names_list[i], 
             eval_options=eval_options

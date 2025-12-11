@@ -329,6 +329,7 @@ using .SearchUtilsModule:
     check_for_loss_threshold,
     check_for_timeout,
     check_max_evals,
+    check_valid_loss_early_stop,
     ResourceMonitor,
     record_channel_state!,
     estimate_work_fraction,
@@ -709,6 +710,8 @@ end
         halls_of_fame=halls_of_fame,
         last_pops=last_pops,
         best_sub_pops=best_sub_pops,
+        min_valid_loss=Inf,
+        valid_loss_plateau=0,
         all_running_search_statistics=all_running_search_statistics,
         num_evals=num_evals,
         cycles_remaining=cycles_remaining,
@@ -939,6 +942,8 @@ function _main_search_loop!(
         # Don't start more if this output has finished its cycles:
         # TODO - this might skip extra cycles?
         population_ready &= (state.cycles_remaining[j] > 0)
+
+        # println("starting pop: ", state.worker_output[j][i])
         if population_ready
             # Take the fetch operation from the channel since its ready
             (cur_pop, best_seen, cur_record, cur_num_evals) = if ropt.parallelism in
@@ -1100,6 +1105,9 @@ function _main_search_loop!(
                     width=options.terminal_width,
                 )
             end
+            if hasproperty(options, :validation_dataset) && options.validation_dataset !== nothing
+                println("Current minimum validation loss is: ", state.min_valid_loss, ", plateau at this loss for: ", state.valid_loss_plateau, " iterations.")
+            end
             last_print_time = time()
         end
         ################################################################
@@ -1111,6 +1119,7 @@ function _main_search_loop!(
             check_for_user_quit(state.stdin_reader),
             check_for_timeout(start_time, options),
             check_max_evals(state.num_evals, options),
+            check_valid_loss_early_stop(state, options)
         ))
             break
         end

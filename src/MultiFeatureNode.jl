@@ -205,7 +205,7 @@ function (::Type{N})(
     allocator::F=default_allocator,
     features=nothing,
     coefficients=nothing
-) where {T1,N<:AbstractExpressionNode,F}
+) where {T1,N<:MultiFeatureNode,F}
     # Handle different node types
     if N <: MultiFeatureNode
         if val !== nothing && feature === nothing && features === nothing
