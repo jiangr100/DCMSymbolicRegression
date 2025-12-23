@@ -317,9 +317,10 @@ function multi_feature_string(
     
     # Add bias term first
     bias = tree.coefficients[end]
-    if bias != zero(typeof(bias))
-        push!(terms, f_constant(bias))
-    end
+    push!(terms, f_constant(bias))
+    # if bias != zero(typeof(bias))
+    #     push!(terms, f_constant(bias))
+    # end
     
     # Add feature terms
     for (i, (feature, coeff)) in enumerate(zip(tree.features, tree.coefficients[1:end-1]))
@@ -329,17 +330,27 @@ function multi_feature_string(
             "x$(feature)"
         end
         
-        if coeff != zero(typeof(coeff))
-            if isempty(terms)
-                # First term
-                term = "$(f_constant(coeff)) * $(f_variable(var_name))"
-            else
-                sign = coeff >= zero(typeof(coeff)) ? " + " : " - "
-                abs_coeff = abs(coeff)
-                term = "$(sign)$(f_constant(abs_coeff)) * $(f_variable(var_name))"
-            end
-            push!(terms, term)
+        if isempty(terms)
+            # First term
+            term = "$(f_constant(coeff)) * $(f_variable(var_name))"
+        else
+            sign = coeff >= zero(typeof(coeff)) ? " + " : " - "
+            abs_coeff = abs(coeff)
+            term = "$(sign)$(f_constant(abs_coeff)) * $(f_variable(var_name))"
         end
+        push!(terms, term)
+        
+        # if coeff != zero(typeof(coeff))
+        #     if isempty(terms)
+        #         # First term
+        #         term = "$(f_constant(coeff)) * $(f_variable(var_name))"
+        #     else
+        #         sign = coeff >= zero(typeof(coeff)) ? " + " : " - "
+        #         abs_coeff = abs(coeff)
+        #         term = "$(sign)$(f_constant(abs_coeff)) * $(f_variable(var_name))"
+        #     end
+        #     push!(terms, term)
+        # end
     end
     
     return isempty(terms) ? f_constant(zero(eltype(tree.coefficients))) : ("(" * join(terms, "") * ")")
