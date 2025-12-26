@@ -42,6 +42,9 @@ function reg_evol_cycle(
                 continue
             end
 
+            println("allstar: ", allstar)
+            println("baby: ", baby)
+
             oldest = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
 
             @recorder begin

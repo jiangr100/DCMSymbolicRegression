@@ -66,6 +66,7 @@ struct MutationResult{N<:AbstractExpression,P<:PopMember} <: AbstractMutationRes
     member::Union{P,Nothing}
     num_evals::Float64
     return_immediately::Bool
+    changed::Bool
 
     # Explicit constructor with keyword arguments
     function MutationResult{_N,_P}(;
@@ -73,12 +74,13 @@ struct MutationResult{N<:AbstractExpression,P<:PopMember} <: AbstractMutationRes
         member::Union{_P,Nothing}=nothing,
         num_evals::Float64=0.0,
         return_immediately::Bool=false,
+        changed::Bool=true,
     ) where {_N<:AbstractExpression,_P<:PopMember}
         @assert(
             (tree === nothing) ⊻ (member === nothing),
             "Mutation result must return either a tree or a pop member, not both"
         )
-        return new{_N,_P}(tree, member, num_evals, return_immediately)
+        return new{_N,_P}(tree, member, num_evals, return_immediately, changed)
     end
 end
 
@@ -195,6 +197,7 @@ end
     condition_mutation_weights!(weights, member, options, curmaxsize, nfeatures)
 
     mutation_choice = sample_mutation(weights)
+    println(mutation_choice)
 
     successful_mutation = false
     attempts = 0
@@ -235,6 +238,12 @@ end
             )
             return mutation_result.member::P, true, num_evals
         else
+            if !mutation_result.changed
+                successful_mutation = false
+                # println("tree: ", rtree[], " mutation type: ", mutation_choice, " did not mutate!")
+                attempts += 1
+                continue
+            end
             @assert(
                 mutation_result.tree isa N,
                 "Mutation result must return a tree if `return_immediately` is false"
@@ -249,6 +258,7 @@ end
     tree = rtree[]
 
     if !successful_mutation
+        # println("reject, failed_constraint_check")
         @recorder begin
             tmp_recorder["result"] = "reject"
             tmp_recorder["reason"] = "failed_constraint_check"
@@ -273,6 +283,7 @@ end
     num_evals += dataset_fraction(dataset)
 
     if isnan(after_cost)
+        # println("reject, nan_loss")
         @recorder begin
             tmp_recorder["result"] = "reject"
             tmp_recorder["reason"] = "nan_loss"
@@ -317,6 +328,7 @@ end
     end
 
     if probChange < rand()
+        # println("reject, annealing_or_frequency")
         @recorder begin
             tmp_recorder["result"] = "reject"
             tmp_recorder["reason"] = "annealing_or_frequency"

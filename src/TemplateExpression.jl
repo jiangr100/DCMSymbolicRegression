@@ -988,6 +988,14 @@ function contains_features_greater_than(tree::AbstractExpressionNode, max_featur
         node.degree == 0 && !node.constant && node.feature > max_feature
     end
 end
+function contains_features_greater_than(tree::MultiFeatureNode, max_feature)
+    any(tree) do node
+        node.degree == 0 && (
+            (node.is_single_feature && node.feature > max_feature) || 
+            (!node.constant && !node.is_single_feature && maximum(node.features) > max_feature)
+        )
+    end
+end
 
 function Base.isempty(ex::TemplateExpression)
     return all(isempty, values(get_contents(ex)))

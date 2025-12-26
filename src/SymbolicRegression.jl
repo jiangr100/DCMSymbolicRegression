@@ -806,6 +806,12 @@ function _initialize_search!(
                 )
                 # This involves population_size evaluations, on the full dataset:
             end
+        pop = first(
+            extract_from_worker(new_pop, Population{T,L,N}, HallOfFame{T,L,N})
+        )
+        pop, evals_from_optimize = optimize_and_simplify_population(
+            datasets[j], pop, options, 0, RecordType()
+        )
         push!(state.worker_output[j], new_pop)
     end
     return nothing
