@@ -146,6 +146,21 @@ function argmin_fast(x::AbstractVector{T}) where {T}
     return findmin_fast(x)[2]
 end
 
+function findmax_fast(x::AbstractVector{T}) where {T}
+    indmax = 1
+    maxval = typemin(T)
+    @inbounds @simd for i in eachindex(x)
+        newmax = x[i] > maxval
+        maxval = newmax ? x[i] : maxval
+        indmax = newmax ? i : indmax
+    end
+    return maxval, indmax
+end
+
+function argmax_fast(x::AbstractVector{T}) where {T}
+    return findmax_fast(x)[2]
+end
+
 function poisson_sample(rng::AbstractRNG, λ::T) where {T}
     iszero(λ) && return 0
     k, p, L = 0, one(T), exp(-λ)

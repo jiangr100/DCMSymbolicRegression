@@ -7,6 +7,7 @@ using ..CoreModule: AbstractOptions, Dataset, RecordType, create_expression, bat
 using ..ComplexityModule: compute_complexity
 using ..PopMemberModule: generate_reference
 using ..PopulationModule: Population, finalize_costs
+using ..PopMemberModule: PopMember
 using ..HallOfFameModule: HallOfFame
 using ..AdaptiveParsimonyModule: RunningSearchStatistics
 using ..RegularizedEvolutionModule: reg_evol_cycle
@@ -38,9 +39,10 @@ function s_r_cycle(
     num_evals = 0.0
 
     batched_dataset = options.batching ? batch(dataset, options.batch_size) : dataset
+    new_pop = PopMember[]
 
     for temperature in all_temperatures
-        pop, tmp_num_evals = reg_evol_cycle(
+        new_pop_iter, tmp_num_evals = reg_evol_cycle(
             batched_dataset,
             pop,
             temperature,
@@ -50,15 +52,24 @@ function s_r_cycle(
             record,
         )
         num_evals += tmp_num_evals
-        for member in pop.members
-            size = compute_complexity(member, options)
-            if 0 < size <= options.maxsize && (
-                !best_examples_seen.exists[size] ||
-                member.cost < best_examples_seen.members[size].cost
-            )
-                best_examples_seen.exists[size] = true
-                best_examples_seen.members[size] = copy(member)
-            end
+        append!(new_pop, new_pop_iter)
+    end
+
+    sort!(pop.members, by=p->p.loss, rev=true)
+    sort!(new_pop, by=p->p.loss)
+    replacement_ratio = hasproperty(options, :replacement_ratio) ? options.replacement_ratio : 0.5
+    for i in 1:min(length(new_pop), Int(pop.n * replacement_ratio))
+        pop.members[i] = new_pop[i]
+    end
+
+    for member in pop.members
+        size = compute_complexity(member, options)
+        if 0 < size <= options.maxsize && (
+            !best_examples_seen.exists[size] ||
+            member.cost < best_examples_seen.members[size].cost
+        )
+            best_examples_seen.exists[size] = true
+            best_examples_seen.members[size] = copy(member)
         end
     end
 

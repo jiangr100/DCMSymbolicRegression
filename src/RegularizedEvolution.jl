@@ -3,10 +3,11 @@ module RegularizedEvolutionModule
 using DynamicExpressions: string_tree
 using ..CoreModule: AbstractOptions, Dataset, RecordType, DATA_TYPE, LOSS_TYPE
 using ..PopulationModule: Population, best_of_sample
+using ..PopMemberModule: PopMember
 using ..AdaptiveParsimonyModule: RunningSearchStatistics
 using ..MutateModule: next_generation, crossover_generation
 using ..RecorderModule: @recorder
-using ..UtilsModule: argmin_fast
+using ..UtilsModule: argmin_fast, argmax_fast
 
 # Pass through the population several times, replacing the oldest
 # with the fittest of a small subsample
@@ -18,9 +19,10 @@ function reg_evol_cycle(
     running_search_statistics::RunningSearchStatistics,
     options::AbstractOptions,
     record::RecordType,
-)::Tuple{P,Float64} where {T<:DATA_TYPE,L<:LOSS_TYPE,P<:Population{T,L}}
+)::Tuple{Vector{PopMember},Float64} where {T<:DATA_TYPE,L<:LOSS_TYPE,P<:Population{T,L}}    # Tuple{P, Float64}
     num_evals = 0.0
     n_evol_cycles = ceil(Int, pop.n / options.tournament_selection_n)
+    new_pop = PopMember[]
 
     for i in 1:n_evol_cycles
         if rand() > options.crossover_probability
@@ -42,10 +44,12 @@ function reg_evol_cycle(
                 continue
             end
 
-            println("allstar: ", allstar)
-            println("baby: ", baby)
+            # println("allstar: ", allstar)
+            # println("baby: ", baby)
 
-            oldest = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
+            # oldest = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
+            # oldest = argmax_fast([pop.members[member].loss for member in 1:(pop.n)])
+            push!(new_pop, baby)
 
             @recorder begin
                 if !haskey(record, "mutations")
@@ -77,7 +81,7 @@ function reg_evol_cycle(
                 )
             end
 
-            pop.members[oldest] = baby
+            # pop.members[oldest] = baby
 
         else # Crossover
             allstar1 = best_of_sample(pop, running_search_statistics, options)
@@ -99,11 +103,18 @@ function reg_evol_cycle(
             end
 
             # Find the oldest members to replace:
-            oldest1 = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
-            BT = typeof(first(pop.members).birth)
-            oldest2 = argmin_fast([
-                i == oldest1 ? typemax(BT) : pop.members[i].birth for i in 1:(pop.n)
-            ])
+            # oldest1 = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
+            # oldest1 = argmax_fast([pop.members[member].loss for member in 1:(pop.n)])
+            # BT = typeof(first(pop.members).birth)
+            # BT = typeof(first(pop.members).loss)
+            # oldest2 = argmin_fast([
+            #     i == oldest1 ? typemax(BT) : pop.members[i].birth for i in 1:(pop.n)
+            # ])
+            # oldest2 = argmax_fast([
+            #     i == oldest1 ? typemin(BT) : pop.members[i].loss for i in 1:(pop.n)
+            # ])
+            push!(new_pop, baby1)
+            push!(new_pop, baby2)
 
             @recorder begin
                 if !haskey(record, "mutations")
@@ -152,12 +163,13 @@ function reg_evol_cycle(
             end
 
             # Replace old members with new ones:
-            pop.members[oldest1] = baby1
-            pop.members[oldest2] = baby2
+            # pop.members[oldest1] = baby1
+            # pop.members[oldest2] = baby2
         end
     end
 
-    return (pop, num_evals)
+    # return (pop, num_evals)
+    return (new_pop, num_evals)
 end
 
 end

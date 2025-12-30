@@ -9,7 +9,9 @@ using DynamicExpressions:
     AbstractExpression,
     Expression,
     count_scalar_constants,
-    extract_gradient
+    extract_gradient,
+    tree_mapreduce,
+    get_child
 
 import DynamicExpressions:
     get_scalar_constants,
@@ -25,6 +27,9 @@ using ..UtilsModule: get_birth_order, PerTaskCache, stable_get!
 using ..LossFunctionsModule: eval_loss, loss_to_cost
 using ..PopMemberModule: PopMember
 using ..MultiFeatureNodeModule
+
+using ..MutationFunctionsModule:
+    _find_parent
 
 function can_optimize(::AbstractExpression{T}, options) where {T}
     return can_optimize(T, options)
@@ -72,6 +77,28 @@ Check if the current node in a tree has constants, either a constant node, or a 
 """
 @inline node_has_constants(tree::MultiFeatureNode) = tree.degree == 0 && !tree.is_single_feature
 
+function node_to_optimize(tree, leaf)
+    if leaf.degree > 0
+        return false
+    end
+    if !leaf.constant
+        return !leaf.is_single_feature
+    end
+    return no_multi_feature(tree, leaf)
+end
+
+function no_multi_feature(tree, leaf)
+    @assert leaf.degree == 0 && leaf.constant
+    parent, idx = _find_parent(tree, leaf)
+    return tree_mapreduce(
+        t -> (!t.constant && !t.is_single_feature),
+        t -> 0,
+        +,
+        get_child(parent, 2),
+        break_sharing=Val(true)
+    ) == 0
+end
+
 """
     get_scalar_constants(tree::AbstractExpressionNode{T}, BT::Type = T)::Vector{T} where {T}
 
@@ -84,7 +111,7 @@ function get_scalar_constants(
     tree::MultiFeatureNode{T}, ::Type{BT}=get_number_type(T)
 ) where {T,BT}
     refs = filter_map(
-        node_has_constants, node -> Ref(node), tree, Base.RefValue{typeof(tree)}
+        Base.Fix1(node_to_optimize, tree), node -> Ref(node), tree, Base.RefValue{typeof(tree)}
     )
     if T <: Number
         if isempty(refs)
@@ -106,7 +133,7 @@ function set_scalar_constants!(tree::MultiFeatureNode{T}, constants, refs) where
     if T <: Number
         j = 1
         @inbounds for i in eachindex(refs)
-            if refs[i][].constant
+            if refs[i][].constant && no_multi_feature(tree, refs[i][])
                 refs[i][].val = constants[j]
                 j += 1
             else

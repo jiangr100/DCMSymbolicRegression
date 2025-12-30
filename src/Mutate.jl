@@ -197,7 +197,7 @@ end
     condition_mutation_weights!(weights, member, options, curmaxsize, nfeatures)
 
     mutation_choice = sample_mutation(weights)
-    println(mutation_choice)
+    # println(mutation_choice)
 
     successful_mutation = false
     attempts = 0
