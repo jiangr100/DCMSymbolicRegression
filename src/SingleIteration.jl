@@ -55,11 +55,45 @@ function s_r_cycle(
         append!(new_pop, new_pop_iter)
     end
 
-    sort!(pop.members, by=p->p.loss, rev=true)
-    sort!(new_pop, by=p->p.loss)
+    old_pop = PopMember[]
     replacement_ratio = hasproperty(options, :replacement_ratio) ? options.replacement_ratio : 0.5
-    for i in 1:min(length(new_pop), Int(pop.n * replacement_ratio))
-        pop.members[i] = new_pop[i]
+    
+    sort!(pop.members, by=p->p.loss)
+    prev_loss = -1
+    for member in pop.members
+        if member.loss == prev_loss
+            continue
+        end
+        push!(old_pop, member)
+        prev_loss = member.loss
+    end
+    k = length(pop.members)
+    for member in old_pop
+        pop.members[k] = member
+        k -= 1
+        if k <= pop.n * replacement_ratio
+            break
+        end
+    end
+    
+    sort!(new_pop, by=p->p.loss)
+    k = 1
+    prev_loss = -1
+    for member in new_pop
+        if member.loss == prev_loss
+            continue
+        end
+        pop.members[k] = member
+        k += 1
+        prev_loss = member.loss
+        if k > pop.n * replacement_ratio
+            break
+        end
+    end
+
+    println("pop member after mutation: ")
+    for member in pop.members
+        println(member.loss)
     end
 
     for member in pop.members
@@ -84,7 +118,7 @@ function optimize_and_simplify_population(
     # Note: we have to turn off this threading loop due to Enzyme, since we need
     # to manually allocate a new task with a larger stack for Enzyme.
     should_thread = !(options.deterministic) && !(isa(options.autodiff_backend, AutoEnzyme))
-    # should_thread = false
+    should_thread = false
 
     batched_dataset = options.batching ? batch(dataset, options.batch_size) : dataset
 

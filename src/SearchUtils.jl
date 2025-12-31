@@ -11,6 +11,9 @@ using StyledStrings: @styled_str
 using DispatchDoctor: @unstable
 using Logging: AbstractLogger
 
+using CSV
+using DataFrames
+
 using DynamicExpressions:
     AbstractExpression, string_tree, parse_expression, EvalOptions, with_type_parameters
 using ..UtilsModule: subscriptify
@@ -773,6 +776,25 @@ function update_hall_of_fame!(
             hall_of_fame.exists[size] = true
         end
     end
+end
+
+function save_pop_to_csv(
+    members::Vector{PM}, options::AbstractOptions, iter, dataset_idx, ropt::AbstractRuntimeOptions,
+) where {PM<:PopMember}
+    df = DataFrame(
+        loss = Float64[],
+        size = Int64[],
+        content = String[],
+    )
+    for member in members
+        size = compute_complexity(member, options)
+        push!(df, (member.loss, size, string_tree(member.tree)))
+    end
+
+    output_directory = joinpath(something(options.output_directory, "outputs"), ropt.run_id)
+    mkpath(output_directory)
+    output_file = joinpath(output_directory, "population_dataset$(dataset_idx)_iter$(iter).csv")
+    CSV.write(output_file, df)
 end
 
 function _parse_guess_expression(

@@ -343,7 +343,8 @@ using .SearchUtilsModule:
     get_cur_maxsize,
     update_hall_of_fame!,
     parse_guesses,
-    logging_callback!
+    logging_callback!,
+    save_pop_to_csv
 using .LoggingModule: AbstractSRLogger, SRLogger, get_logger
 using .TemplateExpressionModule:
     TemplateExpression, TemplateStructure, TemplateExpressionSpec, ParamVector, has_params
@@ -978,6 +979,9 @@ function _main_search_loop!(
             update_hall_of_fame!(state.halls_of_fame[j], best_seen.members[best_seen.exists], options)
             #! format: on
 
+            cur_iter = ropt.niterations * options.populations - state.cycles_remaining[j]
+            save_pop_to_csv(cur_pop.members, options, cur_iter, j, ropt)
+            
             # Dominating pareto curve - must be better than all simpler equations
             dominating = calculate_pareto_frontier(state.halls_of_fame[j])
 
