@@ -44,45 +44,7 @@ function reg_evol_cycle(
                 continue
             end
 
-            # println("allstar: ", allstar)
-            # println("baby: ", baby)
-
-            # oldest = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
-            # oldest = argmax_fast([pop.members[member].loss for member in 1:(pop.n)])
             push!(new_pop, baby)
-
-            @recorder begin
-                if !haskey(record, "mutations")
-                    record["mutations"] = RecordType()
-                end
-                for member in [allstar, baby, pop.members[oldest]]
-                    if !haskey(record["mutations"], "$(member.ref)")
-                        record["mutations"]["$(member.ref)"] = RecordType(
-                            "events" => Vector{RecordType}(),
-                            "tree" => string_tree(member.tree, options),
-                            "cost" => member.cost,
-                            "loss" => member.loss,
-                            "parent" => member.parent,
-                        )
-                    end
-                end
-                mutate_event = RecordType(
-                    "type" => "mutate",
-                    "time" => time(),
-                    "child" => baby.ref,
-                    "mutation" => mutation_recorder,
-                )
-                death_event = RecordType("type" => "death", "time" => time())
-
-                # Put in random key rather than vector; otherwise there are collisions!
-                push!(record["mutations"]["$(allstar.ref)"]["events"], mutate_event)
-                push!(
-                    record["mutations"]["$(pop.members[oldest].ref)"]["events"], death_event
-                )
-            end
-
-            # pop.members[oldest] = baby
-
         else # Crossover
             allstar1 = best_of_sample(pop, running_search_statistics, options)
             allstar2 = best_of_sample(pop, running_search_statistics, options)
@@ -102,73 +64,11 @@ function reg_evol_cycle(
                 continue
             end
 
-            # Find the oldest members to replace:
-            # oldest1 = argmin_fast([pop.members[member].birth for member in 1:(pop.n)])
-            # oldest1 = argmax_fast([pop.members[member].loss for member in 1:(pop.n)])
-            # BT = typeof(first(pop.members).birth)
-            # BT = typeof(first(pop.members).loss)
-            # oldest2 = argmin_fast([
-            #     i == oldest1 ? typemax(BT) : pop.members[i].birth for i in 1:(pop.n)
-            # ])
-            # oldest2 = argmax_fast([
-            #     i == oldest1 ? typemin(BT) : pop.members[i].loss for i in 1:(pop.n)
-            # ])
             push!(new_pop, baby1)
             push!(new_pop, baby2)
-
-            @recorder begin
-                if !haskey(record, "mutations")
-                    record["mutations"] = RecordType()
-                end
-                for member in [
-                    allstar1,
-                    allstar2,
-                    baby1,
-                    baby2,
-                    pop.members[oldest1],
-                    pop.members[oldest2],
-                ]
-                    if !haskey(record["mutations"], "$(member.ref)")
-                        record["mutations"]["$(member.ref)"] = RecordType(
-                            "events" => Vector{RecordType}(),
-                            "tree" => string_tree(member.tree, options),
-                            "cost" => member.cost,
-                            "loss" => member.loss,
-                            "parent" => member.parent,
-                        )
-                    end
-                end
-                crossover_event = RecordType(
-                    "type" => "crossover",
-                    "time" => time(),
-                    "parent1" => allstar1.ref,
-                    "parent2" => allstar2.ref,
-                    "child1" => baby1.ref,
-                    "child2" => baby2.ref,
-                    "details" => crossover_recorder,
-                )
-                death_event1 = RecordType("type" => "death", "time" => time())
-                death_event2 = RecordType("type" => "death", "time" => time())
-
-                push!(record["mutations"]["$(allstar1.ref)"]["events"], crossover_event)
-                push!(record["mutations"]["$(allstar2.ref)"]["events"], crossover_event)
-                push!(
-                    record["mutations"]["$(pop.members[oldest1].ref)"]["events"],
-                    death_event1,
-                )
-                push!(
-                    record["mutations"]["$(pop.members[oldest2].ref)"]["events"],
-                    death_event2,
-                )
-            end
-
-            # Replace old members with new ones:
-            # pop.members[oldest1] = baby1
-            # pop.members[oldest2] = baby2
         end
     end
 
-    # return (pop, num_evals)
     return (new_pop, num_evals)
 end
 

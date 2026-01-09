@@ -26,6 +26,7 @@ function s_r_cycle(
     verbosity::Int=0,
     options::AbstractOptions,
     record::RecordType,
+    iteration
 )::Tuple{
     P,HallOfFame{T,L,N},Float64
 } where {T,L,D<:Dataset{T,L},N<:AbstractExpression{T},P<:Population{T,L,N}}
@@ -41,6 +42,9 @@ function s_r_cycle(
     batched_dataset = options.batching ? batch(dataset, options.batch_size) : dataset
     new_pop = PopMember[]
 
+    mutation_start_time = time()
+    num_mutations = 0
+
     for temperature in all_temperatures
         new_pop_iter, tmp_num_evals = reg_evol_cycle(
             batched_dataset,
@@ -53,7 +57,11 @@ function s_r_cycle(
         )
         num_evals += tmp_num_evals
         append!(new_pop, new_pop_iter)
+        num_mutations += length(new_pop_iter)
     end
+
+    mutation_time = time() - mutation_start_time
+    mutation_time_avg = mutation_time / num_mutations
 
     old_pop = PopMember[]
     replacement_ratio = hasproperty(options, :replacement_ratio) ? options.replacement_ratio : 0.5
@@ -107,11 +115,17 @@ function s_r_cycle(
         end
     end
 
+    @recorder begin
+        record["complexity_stats"]["iteration$(iteration)"]["num_mutations"] = num_mutations
+        record["complexity_stats"]["iteration$(iteration)"]["mutation_time"] = mutation_time
+        record["complexity_stats"]["iteration$(iteration)"]["mutation_time_avg"] = mutation_time_avg
+    end
+
     return (pop, best_examples_seen, num_evals)
 end
 
 function optimize_and_simplify_population(
-    dataset::D, pop::P, options::AbstractOptions, curmaxsize::Int, record::RecordType
+    dataset::D, pop::P, options::AbstractOptions, curmaxsize::Int, record::RecordType, iteration=nothing
 )::Tuple{P,Float64} where {T,L,D<:Dataset{T,L},P<:Population{T,L}}
     array_num_evals = zeros(Float64, pop.n)
     do_optimization = rand(pop.n) .< options.optimizer_probability
@@ -121,6 +135,9 @@ function optimize_and_simplify_population(
     should_thread = false
 
     batched_dataset = options.batching ? batch(dataset, options.batch_size) : dataset
+
+    optimization_start_time = time()
+    num_optimizations = 0
 
     @threads_if should_thread for j in 1:(pop.n)
         if options.should_simplify
@@ -134,11 +151,15 @@ function optimize_and_simplify_population(
             pop.members[j], array_num_evals[j] = optimize_constants(
                 batched_dataset, pop.members[j], options
             )
+            num_optimizations += 1
         end
     end
     num_evals = sum(array_num_evals)
     pop, tmp_num_evals = finalize_costs(dataset, pop, options)
     num_evals += tmp_num_evals
+
+    optimization_time = time() - optimization_start_time
+    optimization_time_avg = optimization_time / num_optimizations
 
     # Now, we create new references for every member,
     # and optionally record which operations occurred.
@@ -147,40 +168,16 @@ function optimize_and_simplify_population(
         new_ref = generate_reference()
         pop.members[j].parent = old_ref
         pop.members[j].ref = new_ref
+    end
 
-        @recorder begin
-            # Same structure as in RegularizedEvolution.jl,
-            # except we assume that the record already exists.
-            @assert haskey(record, "mutations")
-            member = pop.members[j]
-            if !haskey(record["mutations"], "$(member.ref)")
-                record["mutations"]["$(member.ref)"] = RecordType(
-                    "events" => Vector{RecordType}(),
-                    "tree" => string_tree(member.tree, options),
-                    "cost" => member.cost,
-                    "loss" => member.loss,
-                    "parent" => member.parent,
-                )
-            end
-            optimize_and_simplify_event = RecordType(
-                "type" => "tuning",
-                "time" => time(),
-                "child" => new_ref,
-                "mutation" => RecordType(
-                    "type" =>
-                        if (do_optimization[j] && options.should_optimize_constants)
-                            "simplification_and_optimization"
-                        else
-                            "simplification"
-                        end,
-                ),
-            )
-            death_event = RecordType("type" => "death", "time" => time())
-
-            push!(record["mutations"]["$(old_ref)"]["events"], optimize_and_simplify_event)
-            push!(record["mutations"]["$(old_ref)"]["events"], death_event)
+    @recorder begin
+        if iteration !== nothing
+            record["complexity_stats"]["iteration$(iteration)"]["num_optimizations"] = num_optimizations
+            record["complexity_stats"]["iteration$(iteration)"]["optimization_time"] = optimization_time
+            record["complexity_stats"]["iteration$(iteration)"]["optimization_time_avg"] = optimization_time_avg
         end
     end
+
     return (pop, num_evals)
 end
 

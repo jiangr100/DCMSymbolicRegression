@@ -981,6 +981,11 @@ function _main_search_loop!(
 
             cur_iter = ropt.niterations * options.populations - state.cycles_remaining[j]
             save_pop_to_csv(cur_pop.members, options, cur_iter, j, ropt)
+
+            @recorder json3_write(
+                state.record[], 
+                joinpath(something(options.output_directory, "outputs"), ropt.run_id, options.recorder_file)
+            )
             
             # Dominating pareto curve - must be better than all simpler equations
             dominating = calculate_pareto_frontier(state.halls_of_fame[j])
@@ -1154,7 +1159,7 @@ function _tear_down!(
             wait(state.worker_output[j][i])
         end
     end
-    @recorder json3_write(state.record[], options.recorder_file)
+    @recorder json3_write(state.record[], joinpath(something(options.output_directory, "outputs"), ropt.run_id, options.recorder_file))
     return nothing
 end
 function _format_output(
@@ -1191,6 +1196,13 @@ end
     @recorder record["out$(out)_pop$(pop)"] = RecordType(
         "iteration$(iteration)" => record_population(in_pop, options)
     )
+    @recorder begin
+        record["complexity_stats"] = RecordType(
+            "iteration$(iteration)" => RecordType()
+        )
+    end
+    start_time = time()
+
     num_evals = 0.0
     normalize_frequencies!(running_search_statistics)
     out_pop, best_seen, evals_from_cycle = s_r_cycle(
@@ -1202,10 +1214,11 @@ end
         verbosity=verbosity,
         options=options,
         record=record,
+        iteration=iteration
     )
     num_evals += evals_from_cycle
     out_pop, evals_from_optimize = optimize_and_simplify_population(
-        dataset, out_pop, options, cur_maxsize, record
+        dataset, out_pop, options, cur_maxsize, record, iteration
     )
     num_evals += evals_from_optimize
     if options.batching
@@ -1217,6 +1230,9 @@ end
                 num_evals += 1
             end
         end
+    end
+    @recorder begin
+        record["complexity_stats"]["iteration$(iteration)"]["duration"] = time() - start_time
     end
     return (out_pop, best_seen, record, num_evals)
 end
