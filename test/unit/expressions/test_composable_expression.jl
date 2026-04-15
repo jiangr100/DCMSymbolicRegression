@@ -1,6 +1,5 @@
-@testitem "Integration Test with fit! and Performance Check" begin
-    include("../examples/template_expression.jl")
-end
+# NOTE: MLJBase-dependent template-expression example is covered by integration/ext/mlj/* tests.
+# Keep unit/expressions free of MLJBase dependency.
 @testitem "Test ComposableExpression" begin
     using SymbolicRegression: ComposableExpression, Node
     using DynamicExpressions: OperatorEnum
@@ -94,8 +93,12 @@ end
     # Test unary operations on ValidVector
     @test sin(x).x ≈ sin.([1.0, 2.0, 3.0])
     @test cos(x).x ≈ cos.([1.0, 2.0, 3.0])
+    @test atan(x).x ≈ atan.([1.0, 2.0, 3.0])
     @test abs(x).x ≈ [1.0, 2.0, 3.0]
     @test (-x).x ≈ [-1.0, -2.0, -3.0]
+
+    # Test binary atan (atan2)
+    @test atan(y, x).x ≈ atan.([0.0, 2.0, 4.0], [1.0, 2.0, 3.0])
 
     # Test propagation of invalid flag
     invalid_x = ValidVector([1.0, 2.0, 3.0], false)

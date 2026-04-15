@@ -25,7 +25,7 @@ using ..CoreModule:
     AbstractOptions, Dataset, DATA_TYPE, LOSS_TYPE, specialized_options, dataset_fraction
 using ..UtilsModule: get_birth_order, PerTaskCache, stable_get!
 using ..LossFunctionsModule: eval_loss, loss_to_cost
-using ..PopMemberModule: PopMember
+using ..PopMemberModule: AbstractPopMember, PopMember
 using ..MultiFeatureNodeModule
 
 using ..MutationFunctionsModule:
@@ -43,7 +43,7 @@ end
     member::P,
     options::AbstractOptions;
     rng::AbstractRNG=default_rng(),
-)::Tuple{P,Float64} where {T<:DATA_TYPE,L<:LOSS_TYPE,P<:PopMember{T,L}}
+)::Tuple{P,Float64} where {T<:DATA_TYPE,L<:LOSS_TYPE,N,P<:AbstractPopMember{T,L,N}}
     can_optimize(member.tree, options) || return (member, 0.0)
     nconst = count_constants_for_optimization(member.tree)
     nconst == 0 && return (member, 0.0)
@@ -154,7 +154,7 @@ count_constants_for_optimization(ex::Expression) = count_scalar_constants(ex)
 
 function _optimize_constants(
     dataset, member::P, options, algorithm, optimizer_options, rng
-)::Tuple{P,Float64} where {T,L,P<:PopMember{T,L}}
+)::Tuple{P,Float64} where {T,L,N,P<:AbstractPopMember{T,L,N}}
     tree = member.tree
     x0, refs = get_scalar_constants(tree)
     # @assert count_constants_for_optimization(tree) == length(x0)
@@ -167,7 +167,7 @@ function _optimize_constants(
 end
 function _optimize_constants_inner(
     f::F, fg!::G, x0, refs, dataset, member::P, options, algorithm, optimizer_options, rng
-)::Tuple{P,Float64} where {F,G,T,L,P<:PopMember{T,L}}
+)::Tuple{P,Float64} where {F,G,T,L,N,P<:AbstractPopMember{T,L,N}}
     obj = if algorithm isa Optim.Newton || options.autodiff_backend === nothing
         f
     else
@@ -179,8 +179,9 @@ function _optimize_constants_inner(
     num_evals = result.f_calls * eval_fraction
     # Try other initial conditions:
     for _ in 1:(options.optimizer_nrestarts)
-        eps = randn(rng, T, size(x0)...)
-        xt = @. x0 * (T(1) + T(1//2) * eps)
+        ET = eltype(x0)
+        eps = randn(rng, ET, size(x0)...)
+        xt = @. x0 * (ET(1) + ET(1 // 2) * eps)
         tmpresult = Optim.optimize(obj, xt, algorithm, optimizer_options)
         num_evals += tmpresult.f_calls * eval_fraction
         # TODO: Does this need to take into account h_calls?
