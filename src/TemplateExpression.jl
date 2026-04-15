@@ -108,7 +108,6 @@ The `Kp` parameter is used to specify the symbols representing the parameters, i
 struct TemplateStructure{K,Kp,E<:Function,NF<:NamedTuple{K},NP<:NamedTuple{Kp}} <: Function
     combine::E
     variable_names_list::Vector{Vector{String}}
-    feature_composition::Dict{String, Vector{String}}
     num_features::NF
     num_parameters::NP
 end
@@ -117,19 +116,17 @@ function TemplateStructure{K}(
     combine::E,
     _deprecated_num_features=nothing;
     variable_names_list::Vector{Vector{String}}=nothing,
-    feature_composition::Dict{String, Vector{String}}=nothing,
     num_features=nothing,
     num_parameters=nothing,
 ) where {K,E<:Function}
     return TemplateStructure{K,()}(
-        combine, _deprecated_num_features; variable_names_list, feature_composition, num_features, num_parameters
+        combine, _deprecated_num_features; variable_names_list, num_features, num_parameters
     )
 end
 function TemplateStructure{K,Kp}(
     combine::E,
     _deprecated_num_features=nothing;
     variable_names_list::Vector{Vector{String}}=nothing,
-    feature_composition::Dict{String, Vector{String}}=nothing,
     num_features::Union{NamedTuple{K},Nothing}=nothing,
     num_parameters::Union{NamedTuple{Kp},Nothing}=nothing,
 ) where {K,Kp,E<:Function}
@@ -157,7 +154,7 @@ function TemplateStructure{K,Kp}(
     end
     
     return TemplateStructure{K,Kp,E,typeof(num_features),typeof(num_parameters)}(
-        combine, variable_names_list, feature_composition, num_features, num_parameters
+        combine, variable_names_list, num_features, num_parameters
     )
 end
 

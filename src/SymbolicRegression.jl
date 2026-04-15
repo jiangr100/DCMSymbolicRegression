@@ -179,6 +179,7 @@ using Compat: @compat, Fix
         AbstractOptions, AbstractRuntimeOptions, RuntimeOptions,
         AbstractMutationWeights, mutate!, condition_mutation_weights!,
         sample_mutation, MutationResult, AbstractSearchState, SearchState,
+        crossover_generation,
         LOSS_TYPE, DATA_TYPE, node_type,
     )
 )
@@ -305,7 +306,7 @@ using .PopMemberModule: PopMember, reset_birth!
 using .PopulationModule: Population, best_sub_pop, record_population, best_of_sample
 using .HallOfFameModule:
     HallOfFame, calculate_pareto_frontier, string_dominating_pareto_curve
-using .MutateModule: mutate!, condition_mutation_weights!, MutationResult
+using .MutateModule: mutate!, condition_mutation_weights!, MutationResult, crossover_generation
 using .SingleIterationModule: s_r_cycle, optimize_and_simplify_population
 using .ProgressBarsModule: WrappedProgressBar
 using .RecorderModule: @recorder, find_iteration_from_record
