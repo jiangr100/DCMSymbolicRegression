@@ -99,11 +99,6 @@ function s_r_cycle(
         end
     end
 
-    println("pop member after mutation: ")
-    for member in pop.members
-        println(member.loss)
-    end
-
     for member in pop.members
         size = compute_complexity(member, options)
         if 0 < size <= options.maxsize && (
