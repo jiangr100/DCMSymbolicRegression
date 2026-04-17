@@ -1214,6 +1214,7 @@ end
         )
     end
     start_time = time()
+    rss_start = SingleIterationModule.get_rss_mb()
 
     num_evals = 0.0
     normalize_frequencies!(running_search_statistics)
@@ -1229,6 +1230,8 @@ end
         iteration=iteration
     )
     num_evals += evals_from_cycle
+    rss_after_mutations = SingleIterationModule.get_rss_mb()
+
     out_pop, evals_from_optimize = optimize_and_simplify_population(
         dataset, out_pop, options, cur_maxsize, record, iteration
     )
@@ -1243,9 +1246,28 @@ end
             end
         end
     end
+    rss_before_gc = SingleIterationModule.get_rss_mb()
+
+    # Force full garbage collection and return freed memory to the OS.
+    # Without this, Julia's GC pools (64 MB each) accumulate across iterations
+    # because the heuristic GC doesn't run aggressively enough, eventually
+    # exhausting WSL memory (~12 GB by iteration 8).
+    GC.gc(true)
+    ccall(:malloc_trim, Cint, (Csize_t,), 0)
+    rss_after_gc = SingleIterationModule.get_rss_mb()
+
+    duration = time() - start_time
+    println(stderr, "[Memory] Iter $(iteration): start=$(rss_start)MB → mutations=$(rss_after_mutations)MB → pre-GC=$(rss_before_gc)MB → post-GC=$(rss_after_gc)MB (GC freed $(rss_before_gc - rss_after_gc)MB) | duration=$(round(duration, digits=1))s")
+    flush(stderr)
+
     @recorder begin
-        record["complexity_stats"]["iteration$(iteration)"]["duration"] = time() - start_time
+        record["complexity_stats"]["iteration$(iteration)"]["duration"] = duration
+        record["complexity_stats"]["iteration$(iteration)"]["rss_start_mb"] = rss_start
+        record["complexity_stats"]["iteration$(iteration)"]["rss_after_mutations_mb"] = rss_after_mutations
+        record["complexity_stats"]["iteration$(iteration)"]["rss_before_gc_mb"] = rss_before_gc
+        record["complexity_stats"]["iteration$(iteration)"]["rss_after_gc_mb"] = rss_after_gc
     end
+
     return (out_pop, best_seen, record, num_evals)
 end
 function _info_dump(

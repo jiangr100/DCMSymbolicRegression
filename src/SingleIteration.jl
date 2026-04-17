@@ -8,6 +8,19 @@ using ..ComplexityModule: compute_complexity
 using ..PopMemberModule: generate_reference
 using ..PopulationModule: Population, finalize_costs
 using ..PopMemberModule: PopMember
+
+"""Read process RSS in MB from /proc/self/status. Returns 0 on failure."""
+function get_rss_mb()::Int
+    try
+        for line in eachline("/proc/self/status")
+            if startswith(line, "VmRSS:")
+                return parse(Int, split(line)[2]) ÷ 1024
+            end
+        end
+    catch
+    end
+    return 0
+end
 using ..HallOfFameModule: HallOfFame
 using ..AdaptiveParsimonyModule: RunningSearchStatistics
 using ..RegularizedEvolutionModule: reg_evol_cycle
@@ -133,6 +146,7 @@ function optimize_and_simplify_population(
 
     optimization_start_time = time()
     num_optimizations = 0
+    rss_before_opt = get_rss_mb()
 
     @threads_if should_thread for j in 1:(pop.n)
         if options.should_simplify
@@ -150,6 +164,16 @@ function optimize_and_simplify_population(
         end
     end
     num_evals = sum(array_num_evals)
+    rss_after_opt = get_rss_mb()
+
+    # Collect garbage accumulated during the optimization loop (20 Biogeme calls
+    # each creating Python expression trees and Julia bridge objects).
+    # Using incremental GC (false) here since full GC runs at iteration end.
+    GC.gc(false)
+    rss_after_gc = get_rss_mb()
+    println(stderr, "[Memory] Optimization: before=$(rss_before_opt)MB → after=$(rss_after_opt)MB → GC=$(rss_after_gc)MB (Δopt=+$(rss_after_opt - rss_before_opt)MB, GC reclaimed=$(rss_after_opt - rss_after_gc)MB)")
+    flush(stderr)
+
     pop, tmp_num_evals = finalize_costs(dataset, pop, options)
     num_evals += tmp_num_evals
 
@@ -170,6 +194,9 @@ function optimize_and_simplify_population(
             record["complexity_stats"]["iteration$(iteration)"]["num_optimizations"] = num_optimizations
             record["complexity_stats"]["iteration$(iteration)"]["optimization_time"] = optimization_time
             record["complexity_stats"]["iteration$(iteration)"]["optimization_time_avg"] = optimization_time_avg
+            record["complexity_stats"]["iteration$(iteration)"]["rss_before_opt_mb"] = rss_before_opt
+            record["complexity_stats"]["iteration$(iteration)"]["rss_after_opt_mb"] = rss_after_opt
+            record["complexity_stats"]["iteration$(iteration)"]["rss_after_opt_gc_mb"] = rss_after_gc
         end
     end
 
