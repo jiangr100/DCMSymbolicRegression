@@ -1241,6 +1241,26 @@ end
         dataset, out_pop, options, cur_maxsize, record, iteration
     )
     num_evals += evals_from_optimize
+
+    # Update population snapshot for LLM operators (if available and enabled)
+    try
+        if hasproperty(options, :use_population_snapshot) ? options.use_population_snapshot : true
+            Main.DCMMutationFunctionsModule.update_population_snapshot!(out_pop, options)
+        end
+    catch
+    end
+    # Update formatted insights text for node-level init (if available and reflect enabled)
+    try
+        do_reflect = hasproperty(options, :llm_reflect) ? options.llm_reflect : true
+        if do_reflect
+            buf = Main.MutateModule._get_insights_buffer(options)
+            if buf !== nothing
+                Main.DCMMutationFunctionsModule._CURRENT_INSIGHTS_TEXT[] =
+                    Main.LLMReflectModule.format_insights(buf)
+            end
+        end
+    catch
+    end
     if options.batching
         for i_member in 1:(options.maxsize)
             if best_seen.exists[i_member]
