@@ -66,7 +66,9 @@ function reg_evol_cycle(
             end
 
             push!(new_pop, baby1)
-            push!(new_pop, baby2)
+            # A crossover operator may yield a single offspring (e.g. LLM semantic
+            # crossover); it returns `nothing` in the second slot to signal that.
+            isnothing(baby2) || push!(new_pop, baby2)
         end
     end
 
