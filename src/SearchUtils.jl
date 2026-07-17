@@ -797,6 +797,9 @@ end
 function save_pop_to_csv(
     members::Vector{PM}, options::AbstractOptions, iter, dataset_idx, ropt::AbstractRuntimeOptions,
 ) where {PM<:PopMember}
+    # The precompile workload runs miniature searches; writing their populations
+    # would litter <cwd>/outputs/ with placeholder CSVs on every recompilation.
+    ccall(:jl_generating_output, Cint, ()) == 1 && return nothing
     df = DataFrame(
         loss = Float64[],
         size = Int64[],
