@@ -700,7 +700,11 @@ end
     halls_of_fame = Vector{HallOfFameType}(undef, nout)
 
     total_cycles = ropt.niterations * options.populations
-    cycles_remaining = [total_cycles for j in 1:nout]
+    # Warm-start: skip the cycles a source run already completed. Downstream,
+    # `cur_iter = total_cycles - cycles_remaining` (population CSV numbering) and
+    # `get_cur_maxsize` then continue from the global position rather than 0.
+    completed_cycles = ropt.niterations_completed * options.populations
+    cycles_remaining = [total_cycles - completed_cycles for j in 1:nout]
     cur_maxsizes = [
         get_cur_maxsize(; options, total_cycles, cycles_remaining=cycles_remaining[j]) for
         j in 1:nout
@@ -749,7 +753,13 @@ function _initialize_search!(
         # Recompute losses for the hall of fame, in
         # case the dataset changed:
         for j in eachindex(init_hall_of_fame, datasets, state.halls_of_fame)
-            hof = strip_metadata(init_hall_of_fame[j], options, datasets[j])
+            # Normalize to the state's expression type N: plain Expressions store the
+            # stripped (metadata=nothing) variant, but TemplateExpressions auto-fill
+            # operators/variable_names from their inner expressions, so their state
+            # type is the embedded variant — re-embed when stripping under-shoots.
+            hof = let h = strip_metadata(init_hall_of_fame[j], options, datasets[j])
+                h isa HallOfFame{T,L,N} ? h : embed_metadata(h, options, datasets[j])
+            end
             for member in hof.members[hof.exists]
                 cost, result_loss = eval_cost(datasets[j], member, options)
                 member.cost = cost
@@ -776,7 +786,10 @@ function _initialize_search!(
         saved_pop = load_saved_population(saved_state; out=j, pop=i)
         new_pop =
             if saved_pop !== nothing && length(saved_pop.members) == options.population_size
-                _saved_pop = strip_metadata(saved_pop, options, datasets[j])
+                # Normalize to the state's expression type N (see HallOfFame branch above).
+                _saved_pop = let p = strip_metadata(saved_pop, options, datasets[j])
+                    p isa Population{T,L,N} ? p : embed_metadata(p, options, datasets[j])
+                end
                 ## Update losses:
                 for member in _saved_pop.members
                     cost, result_loss = eval_cost(datasets[j], member, options)

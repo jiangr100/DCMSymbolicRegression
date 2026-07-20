@@ -98,6 +98,11 @@ and parameters dealing with the search hyperparameters itself.
 """
 struct RuntimeOptions{PARALLELISM,DIM_OUT,RETURN_STATE,LOGGER} <: AbstractRuntimeOptions
     niterations::Int64
+    # Iterations already completed by a source run when warm-starting via `saved_state`.
+    # `niterations` stays the TOTAL: the loop runs `niterations - niterations_completed`
+    # more cycles, and cycle-indexed behavior (population CSV numbering, maxsize warmup)
+    # continues from the global position instead of restarting at 0.
+    niterations_completed::Int64
     numprocs::Int64
     init_procs::Union{Vector{Int},Nothing}
     addprocs_function::Function
@@ -132,6 +137,7 @@ end
 
 @unstable function RuntimeOptions(;
     niterations::Int=10,
+    niterations_completed::Int=0,
     nout::Int=1,
     parallelism=:multithreading,
     numprocs::Union{Int,Nothing}=nothing,
@@ -220,6 +226,10 @@ end
     )
     _run_id = @something(run_id, generate_run_id())
 
+    0 <= niterations_completed <= niterations || error(
+        "`niterations_completed` ($niterations_completed) must be in [0, niterations=$niterations].",
+    )
+
     exeflags = if concurrency == :multiprocessing && isnothing(procs)
         heap_size_hint_in_megabytes = floor(
             Int,
@@ -236,6 +246,7 @@ end
 
     return RuntimeOptions{concurrency,dim_out,_return_state,typeof(logger)}(
         niterations,
+        niterations_completed,
         _numprocs,
         procs,
         _addprocs_function,
